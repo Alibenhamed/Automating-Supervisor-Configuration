@@ -1,0 +1,74 @@
+---
+- name: Automating Supervisor Configuration
+  hosts: all
+  become: true
+  vars:
+    config_path: "/etc/supervisor/conf.d/{{ server_name }}.arvea-nature-staging.shop.conf"
+
+  tasks:
+    - name: "Create Supervisor Configuration File: {{ config_path }}"
+      copy:
+        dest: "{{ config_path }}"
+        content: |
+          [program:{{ server_name }}-process-invoices]
+          process_name=%(program_name)s_%(process_num)02d
+          command=php /home/debian/projects/arvea-international/sprints/{{ sprint_name }}/artisan process:invoices
+          autostart=true
+          autorestart=true
+          numprocs=1
+          user=debian
+          startsecs=0
+          redirect_stderr=true
+
+          [program:{{ sprint_name }}-process-unhold-orders]
+          process_name=%(program_name)s_%(process_num)02d
+          command=php /home/debian/projects/arvea-international/sprints/{{ sprint_name }}/artisan process:unhold-orders
+          autostart=true
+          autorestart=true
+          numprocs=1
+          user=debian
+          startsecs=0
+          redirect_stderr=true
+
+          [program:{{ server_name }}-invoicesToPdf]
+          process_name=%(program_name)s_%(process_num)02d
+          command=php /home/debian/projects/arvea-international/sprints/{{ sprint_name }}/artisan queue:work --queue=invoicesToPdf --memory=1024 --timeout=0 --tries=3 --max-time=3600
+          autostart=true
+          autorestart=true
+          numprocs=1
+          user=debian
+          startsecs=0
+          redirect_stderr=true
+
+          [program:{{ server_name }}-queue]
+          process_name=%(program_name)s_%(process_num)02d
+          command=php /home/debian/projects/arvea-international/sprints/{{ sprint_name }}/artisan queue:listen --queue=importsPromo,exportsChallenges,exportsCheques,exportsInvoices,exportsInvoicesProducts,invoicesToPdf,invoicesToPdfStock,importsInvoices,importsInvoicesSent,importsInvoicesDelivered,importsInventory,exportsOrdersProducts,importsPhones,importsInvoicesChangeTransporter,exportInventory,invoicesHistoryToPdf,invoicesHaveToPdf,invoicesCanceledToPdf,penaltiesToPDF,exportDeletedAdvisors,importsInvoicesHave,exportsInvoicesHaveProducts,SendSMSUpgradeGradeAdvisor,SendEMAILUpgradeGradeAdvisor,invoicesHaveArchiveToPdf,invoicesarchiveToPdf,ArchivedPenaltiesToPDF,importsPublicHolidays,exportWhatsapp --timeout=300
+          autostart=true
+          autorestart=true
+          numprocs=1
+          user=debian
+          startsecs=0
+          redirect_stderr=true
+
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: "Reload Supervisor Configuration"
+      command: sudo supervisorctl reread
+
+    - name: "Update Supervisor Processes"
+      command: sudo supervisorctl update
+
+    - name: "Restart Supervisor Service"
+      systemd:
+        name: supervisor
+        state: restarted
+
+    - name: "Check Supervisor Process Status"
+      command: sudo supervisorctl status
+      register: supervisor_status
+
+    - name: "Display Supervisor Process Status"
+      debug:
+        msg: "{{ supervisor_status.stdout_lines }}"
